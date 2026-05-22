@@ -1,25 +1,23 @@
 # X for Codex
 
-Codex plugin that exposes X/Twitter actions as MCP tools by wrapping the local
-[`x-cli`](https://github.com/INFATOSHI/x-cli) command.
+Codex plugin that exposes X/Twitter actions as MCP tools by reusing the
+[`x-cli`](https://github.com/INFATOSHI/x-cli) Python API client.
 
 This plugin intentionally stays thin:
 
 - It does not reimplement X auth.
-- It uses `x-cli -j ...` for structured JSON output.
+- It uses the `x_cli` package API directly.
 - It keeps public write actions explicit in the tool names.
 
 ## Requirements
 
 - `uv`
-- `x-cli` on `PATH`
-- Working `x-cli` credentials, for example `~/.config/x-cli/.env`
+- Working X credentials, for example `~/.config/x-cli/.env`
 
 On Elliot's MacBook, this is already set up as:
 
 ```bash
-/Users/elliot/.local/bin/x-cli
-~/.config/x-cli/.env -> /Users/elliot/x-cli/.env
+~/.config/x-cli/.env
 ```
 
 ## Tools
@@ -48,4 +46,3 @@ uv run pytest
 uv run ruff check . --fix
 uv run x-plugin-codex-mcp
 ```
-

@@ -1,120 +1,85 @@
-"""MCP server that wraps the local x-cli executable."""
+"""MCP server that wraps the x_cli Python API client."""
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
-
-DEFAULT_TIMEOUT_SECONDS = 30
-DEFAULT_X_CLI = "x-cli"
+from x_cli.api import XApiClient
+from x_cli.auth import load_credentials
+from x_cli.utils import parse_tweet_id, strip_at
 
 mcp = FastMCP("x-plugin-codex")
 
 
-class XCliError(RuntimeError):
-    """Raised when x-cli exits unsuccessfully or emits invalid JSON."""
-
-
-def _x_cli_path() -> str:
-    return os.environ.get("X_CLI_PATH", DEFAULT_X_CLI)
-
-
-def run_x_cli(*args: str, timeout: int = DEFAULT_TIMEOUT_SECONDS) -> Any:
-    """Run x-cli in JSON mode and return the decoded response."""
-    command = [_x_cli_path(), "-j", *args]
+def _with_client(method: str, *args: Any, **kwargs: Any) -> Any:
+    """Load credentials, call one XApiClient method, and close the HTTP client."""
+    client = XApiClient(load_credentials())
     try:
-        completed = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except FileNotFoundError as exc:
-        raise XCliError(
-            "x-cli was not found on PATH. Install x-cli or set X_CLI_PATH."
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise XCliError(f"x-cli timed out after {timeout} seconds: {' '.join(command)}") from exc
-
-    if completed.returncode != 0:
-        stderr = completed.stderr.strip()
-        stdout = completed.stdout.strip()
-        detail = stderr or stdout or f"exit code {completed.returncode}"
-        raise XCliError(f"x-cli failed: {detail}")
-
-    output = completed.stdout.strip()
-    if not output:
-        return {}
-
-    try:
-        return json.loads(output)
-    except json.JSONDecodeError as exc:
-        raise XCliError(f"x-cli returned non-JSON output: {output}") from exc
+        return getattr(client, method)(*args, **kwargs)
+    finally:
+        client.close()
 
 
 @mcp.tool()
 def x_user_get(username: str) -> Any:
     """Look up an X user profile by username."""
-    return run_x_cli("user", "get", username)
+    return _with_client("get_user", strip_at(username))
 
 
 @mcp.tool()
 def x_user_timeline(username: str, max_results: int = 10) -> Any:
     """Fetch recent posts from an X user's timeline."""
-    return run_x_cli("user", "timeline", username, "--max", str(max_results))
+    user = _with_client("get_user", strip_at(username))
+    return _with_client("get_timeline", user["data"]["id"], max_results)
 
 
 @mcp.tool()
 def x_tweet_get(id_or_url: str) -> Any:
     """Fetch one X post by tweet ID or URL."""
-    return run_x_cli("tweet", "get", id_or_url)
+    return _with_client("get_tweet", parse_tweet_id(id_or_url))
 
 
 @mcp.tool()
 def x_tweet_search(query: str, max_results: int = 10) -> Any:
     """Search recent X posts."""
-    return run_x_cli("tweet", "search", query, "--max", str(max_results))
+    return _with_client("search_tweets", query, max_results)
 
 
 @mcp.tool()
 def x_me_mentions(max_results: int = 10) -> Any:
     """Fetch recent mentions for the authenticated X account."""
-    return run_x_cli("me", "mentions", "--max", str(max_results))
+    return _with_client("get_mentions", max_results)
 
 
 @mcp.tool()
 def x_tweet_post(text: str) -> Any:
     """Publicly post a new tweet from the authenticated X account."""
-    return run_x_cli("tweet", "post", text)
+    return _with_client("post_tweet", text)
 
 
 @mcp.tool()
 def x_tweet_reply(id_or_url: str, text: str) -> Any:
     """Publicly reply to an X post from the authenticated X account."""
-    return run_x_cli("tweet", "reply", id_or_url, text)
+    return _with_client("post_tweet", text, reply_to=parse_tweet_id(id_or_url))
 
 
 @mcp.tool()
 def x_tweet_quote(id_or_url: str, text: str) -> Any:
     """Publicly quote an X post from the authenticated X account."""
-    return run_x_cli("tweet", "quote", id_or_url, text)
+    return _with_client("post_tweet", text, quote_tweet_id=parse_tweet_id(id_or_url))
 
 
 @mcp.tool()
 def x_like_tweet(id_or_url: str) -> Any:
     """Like an X post from the authenticated X account."""
-    return run_x_cli("like", id_or_url)
+    return _with_client("like_tweet", parse_tweet_id(id_or_url))
 
 
 @mcp.tool()
 def x_retweet(id_or_url: str) -> Any:
     """Retweet an X post from the authenticated X account."""
-    return run_x_cli("retweet", id_or_url)
+    return _with_client("retweet", parse_tweet_id(id_or_url))
 
 
 def main() -> None:

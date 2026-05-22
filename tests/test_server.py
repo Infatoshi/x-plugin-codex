@@ -1,57 +1,81 @@
 from __future__ import annotations
 
-import subprocess
-
-import pytest
+from typing import Any
 
 from x_plugin_codex import server
 
 
-def test_run_x_cli_uses_json_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[list[str]] = []
+class FakeClient:
+    calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
 
-    def fake_run(command, **kwargs):
-        calls.append(command)
-        assert kwargs["check"] is False
-        assert kwargs["capture_output"] is True
-        assert kwargs["text"] is True
-        return subprocess.CompletedProcess(command, 0, '{"ok": true}', "")
+    def __init__(self, creds: object) -> None:
+        self.creds = creds
 
-    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    def close(self) -> None:
+        self.calls.append(("close", (), {}))
 
-    assert server.run_x_cli("user", "get", "openai") == {"ok": True}
-    assert calls == [["x-cli", "-j", "user", "get", "openai"]]
+    def get_user(self, username: str) -> dict[str, Any]:
+        self.calls.append(("get_user", (username,), {}))
+        return {"data": {"id": "42", "username": username}}
 
+    def get_timeline(self, user_id: str, max_results: int) -> dict[str, Any]:
+        self.calls.append(("get_timeline", (user_id, max_results), {}))
+        return {"data": [{"id": "1", "text": "hello"}]}
 
-def test_run_x_cli_honors_x_cli_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[list[str]] = []
-    monkeypatch.setenv("X_CLI_PATH", "/tmp/x-cli")
+    def get_tweet(self, tweet_id: str) -> dict[str, Any]:
+        self.calls.append(("get_tweet", (tweet_id,), {}))
+        return {"data": {"id": tweet_id}}
 
-    def fake_run(command, **kwargs):
-        calls.append(command)
-        return subprocess.CompletedProcess(command, 0, "{}", "")
+    def search_tweets(self, query: str, max_results: int) -> dict[str, Any]:
+        self.calls.append(("search_tweets", (query, max_results), {}))
+        return {"data": []}
 
-    monkeypatch.setattr(server.subprocess, "run", fake_run)
-
-    assert server.run_x_cli("tweet", "get", "123") == {}
-    assert calls[0][0] == "/tmp/x-cli"
-
-
-def test_run_x_cli_raises_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(command, **kwargs):
-        return subprocess.CompletedProcess(command, 1, "", "nope")
-
-    monkeypatch.setattr(server.subprocess, "run", fake_run)
-
-    with pytest.raises(server.XCliError, match="nope"):
-        server.run_x_cli("user", "get", "openai")
+    def post_tweet(self, text: str, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("post_tweet", (text,), kwargs))
+        return {"data": {"text": text}}
 
 
-def test_run_x_cli_raises_on_invalid_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(command, **kwargs):
-        return subprocess.CompletedProcess(command, 0, "not json", "")
+def setup_fake_client(monkeypatch):
+    FakeClient.calls = []
+    monkeypatch.setattr(server, "load_credentials", lambda: object())
+    monkeypatch.setattr(server, "XApiClient", FakeClient)
 
-    monkeypatch.setattr(server.subprocess, "run", fake_run)
 
-    with pytest.raises(server.XCliError, match="non-JSON"):
-        server.run_x_cli("user", "get", "openai")
+def test_user_get_strips_at(monkeypatch) -> None:
+    setup_fake_client(monkeypatch)
+
+    assert server.x_user_get("@openai") == {"data": {"id": "42", "username": "openai"}}
+    assert FakeClient.calls == [("get_user", ("openai",), {}), ("close", (), {})]
+
+
+def test_user_timeline_resolves_user_id(monkeypatch) -> None:
+    setup_fake_client(monkeypatch)
+
+    assert server.x_user_timeline("openai", 7) == {"data": [{"id": "1", "text": "hello"}]}
+    assert FakeClient.calls == [
+        ("get_user", ("openai",), {}),
+        ("close", (), {}),
+        ("get_timeline", ("42", 7), {}),
+        ("close", (), {}),
+    ]
+
+
+def test_tweet_get_parses_url(monkeypatch) -> None:
+    setup_fake_client(monkeypatch)
+
+    assert server.x_tweet_get("https://x.com/openai/status/12345") == {"data": {"id": "12345"}}
+
+
+def test_write_tools_parse_target_ids(monkeypatch) -> None:
+    setup_fake_client(monkeypatch)
+
+    assert server.x_tweet_reply("https://x.com/openai/status/12345", "hi") == {
+        "data": {"text": "hi"}
+    }
+    assert server.x_tweet_quote("12345", "look") == {"data": {"text": "look"}}
+    assert FakeClient.calls == [
+        ("post_tweet", ("hi",), {"reply_to": "12345"}),
+        ("close", (), {}),
+        ("post_tweet", ("look",), {"quote_tweet_id": "12345"}),
+        ("close", (), {}),
+    ]
