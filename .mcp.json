@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "x": {
+      "command": "uv",
+      "args": [
+        "run",
+        "x-plugin-codex-mcp"
+      ],
+      "cwd": "."
+    }
+  }
+}

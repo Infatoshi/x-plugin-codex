@@ -1,0 +1,40 @@
+{
+  "name": "x-plugin-codex",
+  "version": "0.1.0",
+  "description": "Codex MCP plugin for X/Twitter using the local x-cli.",
+  "author": {
+    "name": "Infatoshi",
+    "url": "https://github.com/Infatoshi"
+  },
+  "homepage": "https://github.com/Infatoshi/x-plugin-codex",
+  "repository": "https://github.com/Infatoshi/x-plugin-codex",
+  "license": "MIT",
+  "keywords": [
+    "x",
+    "twitter",
+    "mcp",
+    "codex",
+    "social"
+  ],
+  "interface": {
+    "displayName": "X for Codex",
+    "shortDescription": "Read and post on X through local x-cli.",
+    "longDescription": "X for Codex exposes typed MCP tools for profile lookup, timelines, tweet lookup, search, mentions, and explicit write actions by wrapping the local x-cli installation. It reuses existing x-cli credentials and does not implement its own auth flow.",
+    "developerName": "Infatoshi",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Infatoshi/x-plugin-codex",
+    "privacyPolicyURL": "https://github.com/Infatoshi/x-plugin-codex",
+    "termsOfServiceURL": "https://github.com/Infatoshi/x-plugin-codex",
+    "defaultPrompt": [
+      "Look up an X profile",
+      "Search recent posts on X",
+      "Post this to X"
+    ],
+    "brandColor": "#111111"
+  },
+  "mcpServers": "./.mcp.json"
+}
